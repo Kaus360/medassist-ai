@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from backend.config import settings
 from backend.api_manager.models import APIState
+from backend.api_manager.clients.gemini_client import GeminiClient
+from backend.api_manager.clients.groq_client import GroqClient
 
 class APIManager:
     """Core manager allocating API requests via health tracking and priority."""
@@ -12,10 +14,12 @@ class APIManager:
         
         # Maintain internal dictionary of strictly typed APIState configurations
         self.apis = {
-            "gemini": APIState(name="gemini", priority=1, cooldown_seconds=cooldown),
-            "groq": APIState(name="groq", priority=2, cooldown_seconds=cooldown),
-            "openrouter": APIState(name="openrouter", priority=3, cooldown_seconds=cooldown),
+            "gemini": APIState(name="gemini", priority=1, is_active=True, cooldown_seconds=60),
+            "groq": APIState(name="groq", priority=2, is_active=True, cooldown_seconds=60),
+            "openrouter": APIState(name="openrouter", priority=3, is_active=True, cooldown_seconds=60)
         }
+        self.gemini_client = GeminiClient()
+        self.groq_client = GroqClient()
 
     def get_available_apis(self) -> List[APIState]:
         """Returns fundamentally active APIs sorted purely by priority."""
@@ -68,6 +72,12 @@ class APIManager:
         Internal modular method to execute the actual external API call.
         Structured this way so real async logic can be seamlessly plugged in later.
         """
+        if api_name == "gemini":
+            response = self.gemini_client.generate_response(prompt)
+            if response == "Sorry, I am unable to process your request right now.":
+                raise Exception("Gemini API failure detected during execution")
+            return response
+            
         # Simulating external API logic returning the mock response
         return f"Response from {api_name}"
 
@@ -75,26 +85,32 @@ class APIManager:
         """
         Executes the prompt against configured APIs, dynamically navigating failures.
         """
-        current_time = time.time()
-        
-        # Loop through APIs sorted exactly by priority
-        # we strictly filter down to `active` and eligible API states to loop through
-        eligible_apis = [
-            api for api in self.apis.values() 
-            if api.can_retry(current_time)
-        ]
-        eligible_apis.sort(key=lambda a: a.priority)
+        eligible_apis = sorted(self.apis.values(), key=lambda x: x.priority)
 
         for api in eligible_apis:
             try:
-                # Pluggable modular API execution block 
-                response = self._execute_api_call(api.name, prompt)
+                print(f"Trying API: {api.name}")
                 
+                if api.name == "gemini":
+                    response = self.gemini_client.generate_response(prompt)
+                    if "unable to process" in response.lower():
+                        raise Exception("Gemini returned fallback response")
+                elif api.name == "groq":
+                    response = self.groq_client.generate_response(prompt)
+                    if "failed" in response.lower():
+                        raise Exception("Groq failed")
+                elif api.name == "openrouter":
+                    response = "Response from openrouter"
+                else:
+                    raise Exception(f"Unknown API: {api.name}")
+                
+                print(f"Success from: {api.name}")
                 # Upon completion, mark success and return
                 self.mark_success(api.name)
                 return response
                 
             except Exception as e:
+                print(f"Failed: {api.name} → {e}")
                 # On simulated execution failure, neatly flag state and proceed to next priority item
                 self.mark_failure(api.name)
                 continue
