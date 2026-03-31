@@ -9,6 +9,7 @@ app = FastAPI(
 
 app.include_router(chat_router, prefix=settings.api_v1_str)
 
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "app": settings.app_name}
