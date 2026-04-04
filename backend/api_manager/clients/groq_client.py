@@ -5,10 +5,15 @@ class GroqClient:
     def __init__(self):
         self.client = Groq(api_key=settings.groq_api_key)
 
-    def generate_response(self, prompt: str) -> str:
+    def generate_response(self, prompt: str, system_prompt: str | None = None) -> str:
         try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
             response = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 model="llama-3.1-8b-instant"
             )
             print("=== GROQ RESPONSE ===")

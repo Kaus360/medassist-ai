@@ -1,0 +1,14 @@
+{
+  "name": "medassist-ai-root",
+  "version": "1.0.0",
+  "description": "Orchestrator for MedAssist AI",
+  "scripts": {
+    "frontend": "npm run dev --prefix frontend -- --port 5173",
+    "backend": "backend\\venv\\Scripts\\python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "install:all": "npm install && npm install --prefix frontend && pip install -r backend/requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

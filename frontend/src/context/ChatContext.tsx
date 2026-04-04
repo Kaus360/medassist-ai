@@ -14,7 +14,6 @@ import type { CaseSummary, LoadingPhase, Message, Session, TriageProgress } from
 import {
   detectSymptom,
   getTriageStateInternal,
-  simulateResponse,
   SYMPTOM_TITLE_MAP,
 } from '../engine/simulation-engine';
 
@@ -128,28 +127,62 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortRef.current = false;
 
       try {
-        const result = await simulateResponse(
-          content,
-          currentMessages,
-          (phase) => { if (!abortRef.current) setLoadingPhase(phase); }
-        );
+        setLoadingPhase('analyzing');
+        const response = await fetch("http://127.0.0.1:8000/api/v1/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message: content,
+            session_id: sessionId,
+            history: currentMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content }))
+          })
+        });
+
+        if (!response.ok) {
+           throw new Error(`API error: ${response.status}`);
+        }
+
+        setLoadingPhase('generating');
+        const data = await response.json();
+        
+        // STEP 4: MANDATORY DEBUG LOGS
+        console.log("API RESPONSE:", data);
+        console.log("RAW RESPONSE TEXT:", data.response);
 
         if (abortRef.current) return;
 
         const assistantMsg: Message = {
           id: uuid(),
           role: 'assistant',
-          content: result.content,
+          content: data.response, // STEP 3: Map backend 'response' field
           timestamp: Date.now(),
-          classification: result.classification,
-          severity: result.severity,
-          status: result.status,
-          meta: result.meta,
+          status: data.status,
+          classification: data.status === 'ASK' ? 'triage' : 'insight',
+          meta: data.meta || {
+            symptom: 'unknown',
+            progress: '0/0'
+          }
         };
 
         updateSession(sessionId, (s) => ({
           ...s,
           messages: [...s.messages, assistantMsg],
+        }));
+      } catch (err) {
+        // STEP 5: Error Handling
+        console.error("API ERROR:", err);
+        const errorMsg: Message = {
+          id: uuid(),
+          role: 'assistant',
+          content: "I encountered a connection error. Please ensure the backend server is running and try again.",
+          timestamp: Date.now(),
+          classification: 'general'
+        };
+        updateSession(sessionId, (s) => ({
+          ...s,
+          messages: [...s.messages, errorMsg],
         }));
       } finally {
         if (!abortRef.current) {

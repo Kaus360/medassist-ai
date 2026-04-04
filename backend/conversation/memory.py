@@ -29,25 +29,40 @@ _DEFAULT_STORE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "
 
 class MemoryManager:
     """
-    Manages persistent user interaction history for clinical triage sessions.
+    Manages persistent user interaction history and active session states for clinical triage.
 
-    Storage format (JSON):
+    Storage Format (JSON):
     {
-        "<user_id>": [
-            {
-                "session_id": "...",
-                "symptom": "...",
-                "extracted_data": {...},
-                "timestamp": "ISO-8601"
-            },
-            ...
-        ]
+        "history": {
+            "<user_id>": [
+                {
+                    "session_id": "...",
+                    "symptom": "...",
+                    "extracted_data": {...},
+                    "timestamp": "ISO-8601"
+                },
+                ...
+            ]
+        },
+        "active_sessions": {
+            "<session_id>": {
+                "user_id": "...",
+                "stage": "ASK" | "PROCEED",
+                "last_question": "...",
+                "expected_slot": "...",
+                "slots": {...},
+                "last_updated": "ISO-8601"
+            }
+        }
     }
     """
 
     def __init__(self, store_path: Path | str | None = None) -> None:
         self._store_path = Path(store_path) if store_path else _DEFAULT_STORE_PATH
-        self._store: dict[str, list[dict[str, Any]]] = {}
+        self._store: dict[str, Any] = {
+            "history": {},
+            "active_sessions": {}
+        }
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -63,12 +78,40 @@ class MemoryManager:
         if self._store_path.exists():
             try:
                 with open(self._store_path, "r", encoding="utf-8") as fh:
-                    self._store = json.load(fh)
+                    data = json.load(fh)
+                    # Support legacy format (where root was the history dict)
+                    if "history" not in data:
+                        self._store = {"history": data, "active_sessions": {}}
+                    else:
+                        self._store = data
             except (json.JSONDecodeError, OSError):
                 # Corrupt or empty file – start fresh without crashing
-                self._store = {}
+                self._store = {"history": {}, "active_sessions": {}}
         else:
-            self._store = {}
+            self._store = {"history": {}, "active_sessions": {}}
+            self._flush()
+
+    # ------------------------------------------------------------------
+    # Active Session Management
+    # ------------------------------------------------------------------
+
+    def get_active_session(self, session_id: str) -> dict[str, Any] | None:
+        """Retrieve the state of an active triage session."""
+        return self._store.get("active_sessions", {}).get(session_id)
+
+    def save_active_session(self, session_id: str, state: dict[str, Any]) -> None:
+        """Update or create an active triage session state."""
+        if "active_sessions" not in self._store:
+            self._store["active_sessions"] = {}
+        
+        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+        self._store["active_sessions"][session_id] = state
+        self._flush()
+
+    def clear_active_session(self, session_id: str) -> None:
+        """Remove a session from active storage once triage is completed."""
+        if session_id in self._store.get("active_sessions", {}):
+            del self._store["active_sessions"][session_id]
             self._flush()
 
     # ------------------------------------------------------------------
@@ -101,10 +144,10 @@ class MemoryManager:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-        if user_id not in self._store:
-            self._store[user_id] = []
+        if user_id not in self._store["history"]:
+            self._store["history"][user_id] = []
 
-        self._store[user_id].append(record)
+        self._store["history"][user_id].append(record)
         self._flush()
 
     # ------------------------------------------------------------------
@@ -117,7 +160,7 @@ class MemoryManager:
 
         Returns an empty list if the user has no recorded interactions.
         """
-        return list(self._store.get(user_id, []))
+        return list(self._store.get("history", {}).get(user_id, []))
 
     # ------------------------------------------------------------------
     # Derived queries

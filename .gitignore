@@ -54,3 +54,23 @@ build/
 # ----------------------------
 frontend/build_errors.txt
 frontend/eslint_report.json
+
+# ----------------------------
+# Extra Safety (IMPORTANT)
+# ----------------------------
+.env.local
+.env.development.local
+.env.production.local
+
+.venv/
+
+backend/logs/
+
+*.db
+*.sqlite3
+
+*.tmp
+*.temp
+
+*.swp
+*.bak

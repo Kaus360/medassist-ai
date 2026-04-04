@@ -296,12 +296,15 @@ export function simulateTriage(input: string, history: Message[]): SimulationRes
     };
   }
 
-  // General prompt
-  const content =
-    `Enter your primary symptom to begin triage.`;
+  // General prompt (Step 2: REMOVE FALLBACK RESET)
+  // Only allow this if no session exists AND no symptom was detected in current input.
+  const content = state.detectedSymptom 
+    ? `I didn't quite understand that. Please provide more detail about your **${state.detectedSymptom}** so I can help.`
+    : `Enter your primary symptom to begin triage.`;
+
   return { 
-    content, classification: 'general', status: 'PROCEED',
-    meta: { symptom: 'unknown', progress: '0/0' }
+    content, classification: 'general', status: 'ASK',
+    meta: { symptom: state.detectedSymptom || 'unknown', progress: '0/0' }
   };
 }
 

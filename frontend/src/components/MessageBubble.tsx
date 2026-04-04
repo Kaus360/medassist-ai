@@ -59,91 +59,24 @@ function SeverityIndicator({ severity }: { severity: SeverityLevel }) {
   return <div className={`severity-indicator ${className}`}>{label}</div>;
 }
 
-// ─── Triage Question Card ─────────────────────────────────────────────────────
-function TriageQuestionCard({ lines }: { lines: string[] }) {
-  return (
-    <div className="triage-question-card">
-      <div className="triage-card-header">
-        <span>🩺</span>
-        <span>Additional Information Required</span>
-      </div>
-      <ol className="triage-question-list">
-        {lines.map((line, i) => (
-          <li key={i} className="triage-question-item">
-            <span className="question-badge">{i + 1}</span>
-            <span>{line}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
 
 // ─── Format Content ───────────────────────────────────────────────────────────
-function formatContent(content: string, classification?: Classification) {
+function formatContent(content: string) {
+
   const parts = content.split('⚠️');
   const mainContent = parts[0].trim();
   const disclaimer = parts[1] ? parts[1].trim() : null;
 
-  const lines = mainContent.split('\n').filter((l) => l.trim() !== '');
-
-  const elements: React.ReactNode[] = [];
-  let questionBuffer: string[] = [];
-  let numberedBuffer: string[] = [];
-
-  const flushNumbered = () => {
-    if (numberedBuffer.length > 0) {
-      elements.push(
-        <ol key={`ol-${elements.length}`} className="formatted-list">
-          {numberedBuffer.map((item, i) => (
-            <li key={i} className="formatted-list-item">
-              <span className="list-num">{i + 1}</span>
-              <span dangerouslySetInnerHTML={{ __html: parseBold(item) }} />
-            </li>
-          ))}
-        </ol>
-      );
-      numberedBuffer = [];
-    }
-  };
-
-  const flushQuestions = () => {
-    if (questionBuffer.length > 0) {
-      elements.push(<TriageQuestionCard key={`tq-${elements.length}`} lines={questionBuffer} />);
-      questionBuffer = [];
-    }
-  };
-
-  for (const line of lines) {
-    const numberedMatch = line.match(/^\d+\.\s+(.+)/);
-    const isQuestion = classification === 'triage' && line.trim().endsWith('?');
-
-    if (isQuestion) {
-      flushNumbered();
-      questionBuffer.push(line.replace(/^\d+\.\s*/, '').trim());
-    } else if (numberedMatch) {
-      flushQuestions();
-      numberedBuffer.push(numberedMatch[1]);
-    } else {
-      flushQuestions();
-      flushNumbered();
-      if (line.trim()) {
-        elements.push(
-          <p key={`p-${elements.length}`} className="content-paragraph"
-            dangerouslySetInnerHTML={{ __html: parseBold(line) }} />
-        );
-      }
-    }
-  }
-
-  flushQuestions();
-  flushNumbered();
-
+  // Use pre-wrap to preserve LLM formatting/spacing
   return (
     <>
-      {elements}
+      <div 
+        className="content-text-root" 
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+        dangerouslySetInnerHTML={{ __html: parseBold(mainContent) }}
+      />
       {disclaimer && (
-        <div className="disclaimer-box">
+        <div className="disclaimer-box" style={{ marginTop: '16px' }}>
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
             fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -156,6 +89,7 @@ function formatContent(content: string, classification?: Classification) {
     </>
   );
 }
+
 
 function parseBold(text: string): string {
   return text
@@ -231,7 +165,8 @@ export function MessageBubble({ message }: Props) {
         {message.severity && <SeverityIndicator severity={message.severity ?? null} />}
         
         <div className={isAsk ? 'triage-ask-card-wrapper' : 'bubble assistant-bubble'}>
-          {formatContent(message.content, message.classification)}
+          {formatContent(message.content)}
+
           
           {isAsk && (() => {
             const opts = getQuickOptions(message.content);
